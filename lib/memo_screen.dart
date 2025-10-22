@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MemoScreen extends StatefulWidget {
   const MemoScreen({super.key});
@@ -9,39 +10,45 @@ class MemoScreen extends StatefulWidget {
 }
 
 class _MemoScreenState extends State<MemoScreen> {
-  final _memoController = TextEditingController();
+  final TextEditingController _controller = TextEditingController();
+  late SharedPreferences _prefs;
+  late DateTime _selectedDay;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _selectedDay = ModalRoute.of(context)!.settings.arguments as DateTime;
+    _loadMemo();
+  }
+
+  Future<void> _loadMemo() async {
+    _prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _controller.text = _prefs.getString(_selectedDay.toString()) ?? '';
+    });
+  }
+
+  Future<void> _saveMemo(String text) async {
+    await _prefs.setString(_selectedDay.toString(), text);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final selectedDay = ModalRoute.of(context)!.settings.arguments as DateTime?;
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(selectedDay != null
-            ? '${selectedDay.year}/${selectedDay.month}/${selectedDay.day}のメモ'
-            : 'メモ'),
+        title: Text('${_selectedDay.month}/${_selectedDay.day}'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: <Widget>[
-            TextField(
-              controller: _memoController,
-              maxLines: 10,
-              decoration: const InputDecoration(
-                hintText: 'メモを入力してください',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                // Here you would save the memo
-                Navigator.pop(context);
-              },
-              child: const Text('保存'),
-            ),
-          ],
+        child: TextField(
+          controller: _controller,
+          maxLines: null,
+          expands: true,
+          decoration: const InputDecoration(
+            hintText: 'メモを入力',
+            border: InputBorder.none,
+          ),
+          onChanged: _saveMemo,
         ),
       ),
     );
