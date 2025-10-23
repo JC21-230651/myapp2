@@ -6,10 +6,10 @@ class MemoScreen extends StatefulWidget {
   const MemoScreen({super.key});
 
   @override
-  _MemoScreenState createState() => _MemoScreenState();
+  MemoScreenState createState() => MemoScreenState();
 }
 
-class _MemoScreenState extends State<MemoScreen> {
+class MemoScreenState extends State<MemoScreen> {
   final TextEditingController _controller = TextEditingController();
   late SharedPreferences _prefs;
   late DateTime _selectedDay;
@@ -17,7 +17,15 @@ class _MemoScreenState extends State<MemoScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _selectedDay = ModalRoute.of(context)!.settings.arguments as DateTime;
+    // retrieve the selected day from the arguments
+    final Object? arguments = ModalRoute.of(context)!.settings.arguments;
+    if (arguments is DateTime) {
+      _selectedDay = arguments;
+    } else {
+      // handle the case where the argument is not a DateTime
+      // for example, by using the current date
+      _selectedDay = DateTime.now();
+    }
     _loadMemo();
   }
 

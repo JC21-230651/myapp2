@@ -1,15 +1,15 @@
 
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  RegisterScreenState createState() => RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nicknameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -22,10 +22,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           email: _emailController.text,
           password: _passwordController.text,
         );
-        // You should handle navigation and user feedback here
+        if (!mounted) return;
         Navigator.pop(context);
       } on FirebaseAuthException catch (e) {
-        // Handle errors here, e.g., show a snackbar
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message ?? 'An error occurred')),
         );
