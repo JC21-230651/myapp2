@@ -62,7 +62,10 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/memo',
-      builder: (context, state) => const MemoScreen(),
+      builder: (context, state) {
+        final DateTime? selectedDate = state.extra as DateTime?;
+        return MemoScreen(selectedDate: selectedDate);
+      },
     ),
     GoRoute(
       path: '/weekly_report',
@@ -1007,4 +1010,3 @@ class WeeklyReportScreen extends StatelessWidget {
     );
   }
 }
-

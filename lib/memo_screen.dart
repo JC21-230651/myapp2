@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MemoScreen extends StatefulWidget {
-  const MemoScreen({super.key});
+  final DateTime? selectedDate;
+
+  const MemoScreen({super.key, this.selectedDate});
 
   @override
   MemoScreenState createState() => MemoScreenState();
@@ -15,17 +17,9 @@ class MemoScreenState extends State<MemoScreen> {
   late DateTime _selectedDay;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // retrieve the selected day from the arguments
-    final Object? arguments = ModalRoute.of(context)!.settings.arguments;
-    if (arguments is DateTime) {
-      _selectedDay = arguments;
-    } else {
-      // handle the case where the argument is not a DateTime
-      // for example, by using the current date
-      _selectedDay = DateTime.now();
-    }
+  void initState() {
+    super.initState();
+    _selectedDay = widget.selectedDate ?? DateTime.now();
     _loadMemo();
   }
 
