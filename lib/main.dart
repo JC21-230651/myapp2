@@ -1,38 +1,101 @@
 
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // Import kIsWeb
+import 'dart:developer' as developer;
+
+import 'package:device_calendar/device_calendar.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:table_calendar/table_calendar.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:health/health.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:device_calendar/device_calendar.dart';
 import 'package:pedometer/pedometer.dart';
-import 'package:health/health.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:table_calendar/table_calendar.dart';
+
+import 'event_edit_screen.dart';
 import 'firebase_options.dart';
-import './register_screen.dart';
-import './memo_screen.dart';
-import './task_screen.dart';
-import './event_edit_screen.dart';
-import './notification_service.dart';
-import './notification_setting_screen.dart';
+import 'memo_screen.dart';
+import 'notification_service.dart';
+import 'notification_setting_screen.dart';
+import 'register_screen.dart';
+import 'task_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  final NotificationService notificationService = NotificationService();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Initialize notifications only on non-web platforms
   if (!kIsWeb) {
+    final NotificationService notificationService = NotificationService();
     await notificationService.init();
     await notificationService.requestPermissions();
   }
 
-  initializeDateFormatting('ja_JP', null).then((_) => runApp(const MyApp()));
+  await initializeDateFormatting('ja_JP', null);
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CalendarState()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => HealthState()),
+      ],
+      child: const MyApp(),
+    ),
+  );
+}
+
+final _router = GoRouter(
+  initialLocation: '/',
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (context, state) => const MyHomePage(),
+    ),
+    GoRoute(
+      path: '/register',
+      builder: (context, state) => const RegisterScreen(),
+    ),
+    GoRoute(
+      path: '/memo',
+      builder: (context, state) => const MemoScreen(),
+    ),
+    GoRoute(
+      path: '/weekly_report',
+      builder: (context, state) => const WeeklyReportScreen(),
+    ),
+    GoRoute(
+      path: '/notification_setting',
+      builder: (context, state) => const NotificationSettingScreen(),
+    ),
+    GoRoute(
+      path: '/event/edit',
+      builder: (context, state) {
+        final Map<String, dynamic> args = state.extra as Map<String, dynamic>;
+        return EventEditScreen(
+          event: args['event'] as Event?,
+          calendar: args['calendar'] as Calendar,
+          selectedDate: args['selectedDate'] as DateTime?,
+        );
+      },
+    ),
+  ],
+);
+
+class ThemeProvider with ChangeNotifier {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  ThemeMode get themeMode => _themeMode;
+
+  void toggleTheme() {
+    _themeMode =
+        _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    notifyListeners();
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -40,23 +103,28 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
+      routerConfig: _router,
       title: 'Calendar & Health App',
       theme: ThemeData(
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        textTheme: GoogleFonts.notoSansJpTextTheme(
+          Theme.of(context).textTheme,
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.teal,
           foregroundColor: Colors.white,
         ),
       ),
-      home: const MyHomePage(),
-      routes: {
-        '/register': (context) => const RegisterScreen(),
-        '/memo': (context) => const MemoScreen(),
-        '/weekly_report': (context) => const WeeklyReportScreen(),
-        '/notification_setting': (context) => const NotificationSettingScreen(),
-      },
+      darkTheme: ThemeData.dark().copyWith(
+        textTheme: GoogleFonts.notoSansJpTextTheme(
+          ThemeData.dark().textTheme,
+        ),
+        colorScheme: ColorScheme.fromSwatch(
+            primarySwatch: Colors.teal, brightness: Brightness.dark),
+      ),
+      themeMode: Provider.of<ThemeProvider>(context).themeMode,
     );
   }
 }
@@ -65,39 +133,35 @@ class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
 
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  MyHomePageState createState() => MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class MyHomePageState extends State<MyHomePage> {
   int _selectedIndex = 0;
 
-  // AddScreen and HealthScreen are now stateful and require keys for updates
-  final List<Widget> _widgetOptions = <Widget>[
-    const CalendarScreen(),
-    const TaskScreen(),
-    AddScreen(key: UniqueKey()),
-    HealthScreen(key: UniqueKey()),
-    const MoreScreen(),
+  static const List<Widget> _widgetOptions = <Widget>[
+    CalendarScreen(),
+    TaskScreen(),
+    AddScreen(),
+    HealthScreen(),
+    MoreScreen(),
   ];
 
   void _onItemTapped(int index) {
-    // When navigating away from AddScreen, refresh HealthScreen data
-    if (_selectedIndex == 2 && index != 2) {
-      setState(() {
-        _widgetOptions[3] = HealthScreen(key: UniqueKey());
-      });
-    }
     setState(() {
       _selectedIndex = index;
     });
+    if (index == 3) {
+      // When tapping on the Health tab, refresh health data.
+      context.read<HealthState>().init();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _widgetOptions,
+      body: Center(
+        child: _widgetOptions.elementAt(_selectedIndex),
       ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
@@ -109,18 +173,12 @@ class _MyHomePageState extends State<MyHomePage> {
             icon: Icon(Icons.check_circle_outline),
             label: 'タスク',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add),
-            label: '追加',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.add), label: '追加'),
           BottomNavigationBarItem(
             icon: Icon(Icons.favorite_border),
             label: 'ヘルスケア',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.more_horiz),
-            label: 'その他',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'その他'),
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
@@ -132,27 +190,44 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
-class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
 
-  @override
-  _CalendarScreenState createState() => _CalendarScreenState();
+// A helper for handling calendar permissions securely.
+Future<bool> _requestCalendarPermissions(
+    DeviceCalendarPlugin deviceCalendarPlugin) async {
+  final permissionsGranted = await deviceCalendarPlugin.hasPermissions();
+  if (permissionsGranted.isSuccess && permissionsGranted.data == true) {
+    return true;
+  }
+
+  final requestedPermissions = await deviceCalendarPlugin.requestPermissions();
+  return requestedPermissions.isSuccess && requestedPermissions.data == true;
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class CalendarState with ChangeNotifier {
   final DeviceCalendarPlugin _deviceCalendarPlugin = DeviceCalendarPlugin();
+
   Calendar? _selectedCalendar;
+  Calendar? get selectedCalendar => _selectedCalendar;
+
   List<Calendar> _calendars = [];
+  List<Calendar> get calendars => _calendars;
+
   Map<DateTime, List<Event>> _events = {};
+  Map<DateTime, List<Event>> get events => _events;
+
   List<Event> _selectedEvents = [];
+  List<Event> get selectedEvents => _selectedEvents;
 
   CalendarFormat _calendarFormat = CalendarFormat.month;
-  DateTime _focusedDay = DateTime.now();
-  DateTime? _selectedDay;
+  CalendarFormat get calendarFormat => _calendarFormat;
 
-  @override
-  void initState() {
-    super.initState();
+  DateTime _focusedDay = DateTime.now();
+  DateTime get focusedDay => _focusedDay;
+
+  DateTime? _selectedDay;
+  DateTime? get selectedDay => _selectedDay;
+
+  CalendarState() {
     _selectedDay = _focusedDay;
     if (!kIsWeb) {
       _retrieveCalendars();
@@ -160,121 +235,127 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _retrieveCalendars() async {
-    // On web, this function is not called.
     try {
-      var permissionsGranted = await _deviceCalendarPlugin.hasPermissions();
-      if (permissionsGranted.isSuccess && !(permissionsGranted.data ?? false)) {
-        permissionsGranted = await _deviceCalendarPlugin.requestPermissions();
-        if (!permissionsGranted.isSuccess || !(permissionsGranted.data ?? false)) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('カレンダーへのアクセス権限がありません。機能を利用するには設定から権限を許可してください。'),
-            duration: Duration(seconds: 5),
-          ));
-          return;
-        }
+      final hasPermission =
+          await _requestCalendarPermissions(_deviceCalendarPlugin);
+      if (!hasPermission) {
+        developer.log('Calendar permission denied.', name: 'CalendarState');
+        return;
       }
 
       final calendarsResult = await _deviceCalendarPlugin.retrieveCalendars();
       if (calendarsResult.isSuccess && calendarsResult.data != null) {
-        setState(() {
-          _calendars = calendarsResult.data!;
-          if (_calendars.isNotEmpty) {
-            _selectedCalendar = _calendars.firstWhere((cal) => cal.isReadOnly == false, orElse: () => _calendars.first);
-            _fetchEvents();
-          }
-        });
+        _calendars = calendarsResult.data!;
+        if (_calendars.isNotEmpty) {
+          _selectedCalendar = _calendars.firstWhere(
+            (cal) => cal.isReadOnly != true,
+            orElse: () => _calendars.first,
+          );
+          await _fetchEvents();
+        }
+        notifyListeners();
       }
-    } catch (e) {
-      // print(e);
+    } catch (e, s) {
+      developer.log('Error retrieving calendars.',
+          name: 'CalendarState', error: e, stackTrace: s);
     }
   }
 
   Future<void> _fetchEvents([DateTime? start, DateTime? end]) async {
     if (_selectedCalendar == null || kIsWeb) return;
 
-    final startDate = start ?? DateTime(_focusedDay.year, _focusedDay.month - 1, 1);
+    final startDate =
+        start ?? DateTime(_focusedDay.year, _focusedDay.month - 1, 1);
     final endDate = end ?? DateTime(_focusedDay.year, _focusedDay.month + 2, 0);
 
-    final eventsResult = await _deviceCalendarPlugin.retrieveEvents(
-      _selectedCalendar!.id,
-      RetrieveEventsParams(startDate: startDate, endDate: endDate),
-    );
+    try {
+      final eventsResult = await _deviceCalendarPlugin.retrieveEvents(
+        _selectedCalendar!.id,
+        RetrieveEventsParams(startDate: startDate, endDate: endDate),
+      );
 
-    if (eventsResult.isSuccess && eventsResult.data != null) {
-      final newEvents = <DateTime, List<Event>>{};
-      for (final event in eventsResult.data!) {
-        if (event.start == null) continue;
-        final day = DateTime(event.start!.year, event.start!.month, event.start!.day);
-        if (newEvents[day] == null) {
-          newEvents[day] = [];
+      if (eventsResult.isSuccess && eventsResult.data != null) {
+        final newEvents = <DateTime, List<Event>>{};
+        for (final event in eventsResult.data!) {
+          if (event.start == null) continue;
+          final day =
+              DateTime(event.start!.year, event.start!.month, event.start!.day);
+          newEvents[day] = [...newEvents[day] ?? [], event];
         }
-        newEvents[day]!.add(event);
-      }
-      setState(() {
         _events = newEvents;
         _selectedEvents = _getEventsForDay(_selectedDay!);
-      });
+        notifyListeners();
+      }
+    } catch (e, s) {
+      developer.log('Error fetching events.',
+          name: 'CalendarState', error: e, stackTrace: s);
     }
   }
 
   List<Event> _getEventsForDay(DateTime day) {
-    if (kIsWeb) return [];
     return _events[DateTime(day.year, day.month, day.day)] ?? [];
   }
 
-  void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
+  void onDaySelected(DateTime selectedDay, DateTime focusedDay) {
     if (!isSameDay(_selectedDay, selectedDay)) {
-      setState(() {
-        _selectedDay = selectedDay;
-        _focusedDay = focusedDay;
-        _selectedEvents = _getEventsForDay(selectedDay);
-      });
+      _selectedDay = selectedDay;
+      _focusedDay = focusedDay;
+      _selectedEvents = _getEventsForDay(selectedDay);
+      notifyListeners();
     }
   }
 
-  void _onPageChanged(DateTime focusedDay) {
+  void onPageChanged(DateTime focusedDay) {
     _focusedDay = focusedDay;
     if (!kIsWeb) {
       _fetchEvents();
     }
   }
 
-  Future<void> _navigateAndEditEvent(Event? event) async {
-    if (_selectedCalendar == null || kIsWeb) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('この機能はWeb版では利用できません。'),
-        ));
-        return;
-    }
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EventEditScreen(
-          event: event,
-          calendar: _selectedCalendar!,
-          selectedDate: _selectedDay,
-        ),
-      ),
-    );
-
-    if (result == true) {
-      _fetchEvents();
+  void onFormatChanged(CalendarFormat format) {
+    if (_calendarFormat != format) {
+      _calendarFormat = format;
+      notifyListeners();
     }
   }
 
+  void onCalendarChanged(String? calendarId) {
+    if (calendarId != null) {
+      _selectedCalendar =
+          _calendars.firstWhere((cal) => cal.id == calendarId);
+      _fetchEvents();
+      notifyListeners();
+    }
+  }
+
+  void setToday() {
+    _focusedDay = DateTime.now();
+    _selectedDay = _focusedDay;
+    _selectedEvents = _getEventsForDay(_selectedDay!);
+    notifyListeners();
+  }
+
+  Future<void> refreshEvents() async {
+    await _fetchEvents();
+  }
+}
+
+class CalendarScreen extends StatelessWidget {
+  const CalendarScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
+    final calendarState = Provider.of<CalendarState>(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: _buildCalendarDropdown(),
+        title: _buildCalendarDropdown(context, calendarState),
         actions: [
-          IconButton(icon: const Icon(Icons.today), onPressed: () => setState(() {
-            _focusedDay = DateTime.now();
-            _selectedDay = _focusedDay;
-            _selectedEvents = _getEventsForDay(_selectedDay!);
-          })),
-          _buildFormatButton(),
+          IconButton(
+            icon: const Icon(Icons.today),
+            onPressed: () => calendarState.setToday(),
+          ),
+          _buildFormatButton(calendarState),
         ],
       ),
       body: Column(
@@ -283,68 +364,88 @@ class _CalendarScreenState extends State<CalendarScreen> {
             locale: 'ja_JP',
             firstDay: DateTime.utc(2020, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            calendarFormat: _calendarFormat,
-            eventLoader: _getEventsForDay,
-            onDaySelected: _onDaySelected,
-            onPageChanged: _onPageChanged,
-            onFormatChanged: (format) {
-              if (_calendarFormat != format) {
-                setState(() {
-                  _calendarFormat = format;
-                });
-              }
-            },
+            focusedDay: calendarState.focusedDay,
+            selectedDayPredicate: (day) =>
+                isSameDay(calendarState.selectedDay, day),
+            calendarFormat: calendarState.calendarFormat,
+            eventLoader: (day) =>
+                calendarState.events[DateTime(day.year, day.month, day.day)] ??
+                [],
+            onDaySelected: calendarState.onDaySelected,
+            onPageChanged: calendarState.onPageChanged,
+            onFormatChanged: calendarState.onFormatChanged,
             calendarStyle: const CalendarStyle(
-              todayDecoration: BoxDecoration(color: Colors.teal, shape: BoxShape.circle),
-              selectedDecoration: BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
+              todayDecoration: BoxDecoration(
+                color: Colors.teal,
+                shape: BoxShape.circle,
+              ),
+              selectedDecoration: BoxDecoration(
+                color: Colors.orange,
+                shape: BoxShape.circle,
+              ),
             ),
-            headerStyle: const HeaderStyle(titleCentered: true, formatButtonVisible: false),
+            headerStyle: const HeaderStyle(
+              titleCentered: true,
+              formatButtonVisible: false,
+            ),
           ),
           const Divider(),
-          Expanded(
-            child: _buildEventList(),
-          ),
+          Expanded(child: _buildEventList(context, calendarState)),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateAndEditEvent(null),
+        onPressed: () => _navigateAndEditEvent(context, calendarState, null),
         backgroundColor: Colors.teal,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildFormatButton(){
-      if (_calendarFormat == CalendarFormat.month) return IconButton(icon: const Icon(Icons.view_week_outlined), onPressed: ()=>setState(()=>_calendarFormat = CalendarFormat.week));
-      if (_calendarFormat == CalendarFormat.week) return IconButton(icon: const Icon(Icons.view_day_outlined), onPressed: ()=>setState(()=>_calendarFormat = CalendarFormat.twoWeeks));
-      return IconButton(icon: const Icon(Icons.calendar_month_outlined), onPressed: ()=>setState(()=>_calendarFormat = CalendarFormat.month));
+  Widget _buildFormatButton(CalendarState calendarState) {
+    return IconButton(
+      icon: Icon(calendarState.calendarFormat == CalendarFormat.month
+          ? Icons.view_week_outlined
+          : Icons.calendar_month_outlined),
+      onPressed: () => calendarState.onFormatChanged(
+          calendarState.calendarFormat == CalendarFormat.month
+              ? CalendarFormat.week
+              : CalendarFormat.month),
+    );
   }
 
-  Widget _buildCalendarDropdown() {
-    if (kIsWeb || _calendars.isEmpty) return const Text('カレンダー');
+  Widget _buildCalendarDropdown(
+      BuildContext context, CalendarState calendarState) {
+    if (kIsWeb || calendarState.calendars.isEmpty) {
+      return const Text('カレンダー');
+    }
     return DropdownButtonHideUnderline(
       child: DropdownButton<String>(
-        value: _selectedCalendar?.id,
-        onChanged: (String? newValue) {
-          if (newValue != null) {
-            setState(() {
-              _selectedCalendar = _calendars.firstWhere((cal) => cal.id == newValue);
-              _fetchEvents();
-            });
-          }
-        },
-        items: _calendars.map<DropdownMenuItem<String>>((Calendar calendar) {
+        value: calendarState.selectedCalendar?.id,
+        onChanged: (String? newValue) =>
+            calendarState.onCalendarChanged(newValue),
+        items:
+            calendarState.calendars.map<DropdownMenuItem<String>>((Calendar calendar) {
           return DropdownMenuItem<String>(
             value: calendar.id,
-            child: Text(calendar.name ?? 'No Name', style: const TextStyle(color: Colors.black87)),
+            child: Text(
+              calendar.name ?? 'No Name',
+              style: const TextStyle(color: Colors.black87),
+            ),
           );
         }).toList(),
         selectedItemBuilder: (BuildContext context) {
-            return _calendars.map<Widget>((Calendar cal) {
-              return Center(child: Text(cal.name ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis));
-            }).toList();
+          return calendarState.calendars.map<Widget>((Calendar cal) {
+            return Center(
+              child: Text(
+                cal.name ?? '',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          }).toList();
         },
         icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
         dropdownColor: Colors.white,
@@ -352,21 +453,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildEventList() {
+  Widget _buildEventList(BuildContext context, CalendarState calendarState) {
     if (kIsWeb) {
-        return const Center(child: Text("カレンダー機能はWeb版では利用できません。"));
+      return const Center(child: Text("カレンダー機能はWeb版では利用できません。"));
+    }
+    if (calendarState.selectedEvents.isEmpty) {
+      return const Center(child: Text('今日の予定はありません'));
     }
     return ListView.builder(
-      itemCount: _selectedEvents.length,
+      itemCount: calendarState.selectedEvents.length,
       itemBuilder: (context, index) {
-        final event = _selectedEvents[index];
+        final event = calendarState.selectedEvents[index];
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
           child: ListTile(
             title: Text(event.title ?? 'タイトルなし'),
             subtitle: Text(event.description ?? ''),
             leading: _buildEventLeading(event),
-            onTap: () => _navigateAndEditEvent(event),
+            onTap: () => _navigateAndEditEvent(context, calendarState, event),
           ),
         );
       },
@@ -387,16 +491,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ],
     );
   }
+
+  void _navigateAndEditEvent(
+      BuildContext context, CalendarState calendarState, Event? event) async {
+    if (calendarState.selectedCalendar == null || kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('この機能はWeb版では利用できません。')));
+      return;
+    }
+    final result = await context.push('/event/edit', extra: {
+      'event': event,
+      'calendar': calendarState.selectedCalendar!,
+      'selectedDate': calendarState.selectedDay,
+    });
+
+    if (result == true) {
+      calendarState.refreshEvents();
+    }
+  }
 }
 
 class AddScreen extends StatefulWidget {
   const AddScreen({super.key});
 
   @override
-  _AddScreenState createState() => _AddScreenState();
+  AddScreenState createState() => AddScreenState();
 }
 
-class _AddScreenState extends State<AddScreen> {
+class AddScreenState extends State<AddScreen> {
   late SharedPreferences _prefs;
   final _stepsController = TextEditingController();
   final _sleepController = TextEditingController();
@@ -432,9 +554,7 @@ class _AddScreenState extends State<AddScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('目標設定'),
-      ),
+      appBar: AppBar(title: const Text('目標設定')),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -461,10 +581,9 @@ class _AddScreenState extends State<AddScreen> {
               ElevatedButton(
                 onPressed: () {
                   _saveGoals();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('目標を保存しました')),
-                  );
-                  // Hide keyboard
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('目標を保存しました')));
                   FocusScope.of(context).unfocus();
                 },
                 child: const Text('保存'),
@@ -477,284 +596,138 @@ class _AddScreenState extends State<AddScreen> {
   }
 }
 
-class HealthScreen extends StatefulWidget {
-  const HealthScreen({super.key});
-
-  @override
-  _HealthScreenState createState() => _HealthScreenState();
-}
-
-class _HealthScreenState extends State<HealthScreen> {
-  late Stream<StepCount> _stepCountStream;
-  int _steps = 0;
-  double _sleepHours = 0.0;
-  int _stepGoal = 10000;
-  List<Event> _todaysEvents = [];
+class HealthState with ChangeNotifier {
   final Health _health = Health();
+  final DeviceCalendarPlugin _deviceCalendarPlugin = DeviceCalendarPlugin();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadStepGoal();
-    if (!kIsWeb) {
-      _stepCountStream = Pedometer.stepCountStream;
-      _stepCountStream.listen((stepCount) {
-        if (mounted) {
-          setState(() {
-            _steps = stepCount.steps;
-          });
-        }
-      });
-      _fetchHealthData();
-      _retrieveTodaysEvents();
-    }
+  int _steps = 0;
+  int get steps => _steps;
+
+  double _sleepHours = 0.0;
+  double get sleepHours => _sleepHours;
+
+  int _stepGoal = 10000;
+  int get stepGoal => _stepGoal;
+
+  List<Event> _todaysEvents = [];
+  List<Event> get todaysEvents => _todaysEvents;
+
+  StreamSubscription<StepCount>? _stepCountSubscription;
+
+  List<BarChartGroupData> _sleepData = [];
+  List<BarChartGroupData> get sleepData => _sleepData;
+  List<BarChartGroupData> _stepsData = [];
+  List<BarChartGroupData> get stepsData => _stepsData;
+
+  HealthState() {
+    init();
   }
-  
+
+  Future<void> init() async {
+    await _loadStepGoal();
+    if (!kIsWeb) {
+      _initPedometer();
+      await _fetchHealthData();
+      await _retrieveTodaysEvents();
+      await _fetchWeeklyHealthData();
+    }
+    notifyListeners();
+  }
+
+  void _initPedometer() {
+    _stepCountSubscription?.cancel();
+    _stepCountSubscription = Pedometer.stepCountStream.listen((stepCount) {
+      _steps = stepCount.steps;
+      notifyListeners();
+    });
+  }
+
   Future<void> _loadStepGoal() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-        setState(() {
-            _stepGoal = prefs.getInt('stepGoal') ?? 10000;
-        });
-    }
+    _stepGoal = prefs.getInt('stepGoal') ?? 10000;
   }
 
   Future<void> _fetchHealthData() async {
-    if (kIsWeb) return;
     final types = [HealthDataType.SLEEP_IN_BED];
-    final now = DateTime.now();
-    final yesterday = now.subtract(const Duration(days: 1));
-
-    await _health.requestAuthorization(types);
-    List<HealthDataPoint> healthData = await _health.getHealthDataFromTypes(startTime: yesterday, endTime: now, types: types);
-    double totalSleep = 0;
-    for (var data in healthData) {
-      totalSleep += (data.value as NumericHealthValue).numericValue.toDouble();
-    }
-    if(mounted){
-      setState(() {
+    if (await _health.requestAuthorization(types)) {
+      try {
+        final now = DateTime.now();
+        final yesterday = now.subtract(const Duration(days: 1));
+        List<HealthDataPoint> healthData = await _health.getHealthDataFromTypes(
+          startTime: yesterday,
+          endTime: now,
+          types: types,
+        );
+        double totalSleep = healthData.fold(
+            0,
+            (sum, data) =>
+                sum + (data.value as NumericHealthValue).numericValue.toDouble());
         _sleepHours = totalSleep / 60;
-      });
+      } catch (e, s) {
+        developer.log('Error fetching health data.',
+            name: 'HealthState', error: e, stackTrace: s);
+      }
     }
   }
 
-  void _retrieveTodaysEvents() async {
-    if (kIsWeb) return;
-    final deviceCalendarPlugin = DeviceCalendarPlugin();
-    var permissionsGranted = await deviceCalendarPlugin.hasPermissions();
-    if (permissionsGranted.isSuccess && !(permissionsGranted.data ?? false)) {
-      permissionsGranted = await deviceCalendarPlugin.requestPermissions();
-      if (!permissionsGranted.isSuccess || !(permissionsGranted.data ?? false)) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('カレンダーへのアクセス権限がありません。今日の予定を表示できません。'),
-          duration: Duration(seconds: 3),
-        ));
-        return;
-      }
+  Future<void> _retrieveTodaysEvents() async {
+    if (!await _requestCalendarPermissions(_deviceCalendarPlugin)) {
+      developer.log("Calendar permission denied for today's events.",
+          name: 'HealthState');
+      return;
     }
-
-    final calendarsResult = await deviceCalendarPlugin.retrieveCalendars();
-    final calendars = calendarsResult.data;
-    if (calendars != null && calendars.isNotEmpty) {
-      final calendar = calendars.first;
-      final now = DateTime.now();
-      if (calendar.id != null) {
-        final eventsResult = await deviceCalendarPlugin.retrieveEvents(
+    try {
+      final calendarsResult = await _deviceCalendarPlugin.retrieveCalendars();
+      if (calendarsResult.isSuccess && calendarsResult.data?.isNotEmpty == true) {
+        final calendar = calendarsResult.data!.first;
+        final now = DateTime.now();
+        final eventsResult = await _deviceCalendarPlugin.retrieveEvents(
           calendar.id!,
           RetrieveEventsParams(
             startDate: DateTime(now.year, now.month, now.day),
             endDate: DateTime(now.year, now.month, now.day, 23, 59),
           ),
         );
-        if (eventsResult.isSuccess && mounted) {
-          setState(() {
-            _todaysEvents = eventsResult.data ?? [];
-          });
+        if (eventsResult.isSuccess) {
+          _todaysEvents = eventsResult.data ?? [];
         }
       }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final today = DateFormat('yyyy/M/d E', 'ja_JP').format(DateTime.now());
-    final eventText = _todaysEvents.isNotEmpty ? _todaysEvents.first.title ?? '今日の予定はありません' : '今日の予定はありません';
-    final progress = _stepGoal > 0 ? (_steps / _stepGoal).clamp(0.0, 1.0) : 0.0;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('ヘルスケア'),
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.teal,
-              ),
-              child: Text('メニュー', style: TextStyle(color: Colors.white, fontSize: 24)),
-            ),
-            ListTile(
-              title: const Text('今日のデータ'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('週間レポート'),
-              onTap: () {
-                Navigator.pushNamed(context, '/weekly_report');
-              },
-            ),
-          ],
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(today, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            if (kIsWeb) 
-                const Text("ヘルスケア機能はWeb版では利用できません。", style: TextStyle(color: Colors.red))
-            else ...[
-                LinearProgressIndicator(value: progress, minHeight: 10, backgroundColor: Colors.grey[300], valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange)),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    const Icon(Icons.directions_walk, size: 40),
-                    const SizedBox(width: 10),
-                    Text('$_steps歩', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                Text('目標: $_stepGoal歩', style: const TextStyle(fontSize: 16, color: Colors.grey)),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    const Icon(Icons.bedtime, size: 40),
-                    const SizedBox(width: 10),
-                    Text('${_sleepHours.toStringAsFixed(1)}h', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                const Text('睡眠時間', style: TextStyle(fontSize: 16, color: Colors.grey)),
-            ],
-            const SizedBox(height: 80), // Replaced Spacer
-            Center(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Image.network('https://i.imgur.com/8x81gdH.png', height: 200),
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.black),
-                      ),
-                      child: Text(eventText, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20), // Replaced Spacer
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class MoreScreen extends StatelessWidget {
-  const MoreScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('その他'),
-      ),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.notifications_active),
-            title: const Text('通知設定'),
-            subtitle: const Text('薬の服用時間などを通知します'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: () {
-                if(kIsWeb) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('この機能はWeb版では利用できません。'),
-                    ));
-                    return;
-                }
-              Navigator.pushNamed(context, '/notification_setting');
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.person_add),
-            title: const Text('会員登録'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: () {
-              Navigator.pushNamed(context, '/register');
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class WeeklyReportScreen extends StatefulWidget {
-  const WeeklyReportScreen({super.key});
-
-  @override
-  _WeeklyReportScreenState createState() => _WeeklyReportScreenState();
-}
-
-class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
-  final Health _health = Health();
-  List<BarChartGroupData> _sleepData = [];
-  List<BarChartGroupData> _stepsData = [];
-
-  @override
-  void initState() {
-    super.initState();
-    if (!kIsWeb) {
-      _fetchWeeklyHealthData();
+    } catch (e, s) {
+      developer.log("Error retrieving today's events.",
+          name: 'HealthState', error: e, stackTrace: s);
     }
   }
 
   Future<void> _fetchWeeklyHealthData() async {
-    if(kIsWeb) return;
     final types = [HealthDataType.SLEEP_IN_BED, HealthDataType.STEPS];
-    final now = DateTime.now();
-    final sevenDaysAgo = now.subtract(const Duration(days: 7));
-
-    await _health.requestAuthorization(types);
-    List<HealthDataPoint> healthData = await _health.getHealthDataFromTypes(startTime: sevenDaysAgo, endTime: now, types: types);
-
-    if (mounted) {
-      setState(() {
+    if (await _health.requestAuthorization(types)) {
+      try {
+        final now = DateTime.now();
+        final sevenDaysAgo = now.subtract(const Duration(days: 7));
+        List<HealthDataPoint> healthData = await _health.getHealthDataFromTypes(
+          startTime: sevenDaysAgo,
+          endTime: now,
+          types: types,
+        );
         _sleepData = _generateChartData(healthData, HealthDataType.SLEEP_IN_BED);
         _stepsData = _generateChartData(healthData, HealthDataType.STEPS);
-      });
+      } catch (e, s) {
+        developer.log('Error fetching weekly health data.',
+            name: 'HealthState', error: e, stackTrace: s);
+      }
     }
   }
 
-  List<BarChartGroupData> _generateChartData(List<HealthDataPoint> healthData, HealthDataType dataType) {
+  List<BarChartGroupData> _generateChartData(
+    List<HealthDataPoint> healthData,
+    HealthDataType dataType,
+  ) {
     List<double> weeklyData = List.filled(7, 0.0);
     for (var data in healthData) {
       if (data.type == dataType) {
         final dayIndex = data.dateFrom.weekday - 1;
-        weeklyData[dayIndex] += (data.value as NumericHealthValue).numericValue.toDouble();
+        weeklyData[dayIndex] +=
+            (data.value as NumericHealthValue).numericValue.toDouble();
       }
     }
 
@@ -770,7 +743,9 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
         barRods: [
           BarChartRodData(
             toY: weeklyData[index],
-            color: dataType == HealthDataType.SLEEP_IN_BED ? Colors.lightBlue : Colors.orange,
+            color: dataType == HealthDataType.SLEEP_IN_BED
+                ? Colors.lightBlue
+                : Colors.orange,
             width: 16,
             borderRadius: BorderRadius.circular(4),
           ),
@@ -780,31 +755,213 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
   }
 
   @override
+  void dispose() {
+    _stepCountSubscription?.cancel();
+    super.dispose();
+  }
+}
+
+class HealthScreen extends StatelessWidget {
+  const HealthScreen({super.key});
+
+  @override
   Widget build(BuildContext context) {
+    final healthState = Provider.of<HealthState>(context);
+    final today = DateFormat('yyyy/M/d E', 'ja_JP').format(DateTime.now());
+    final eventText = healthState.todaysEvents.isNotEmpty
+        ? healthState.todaysEvents.first.title ?? '今日の予定はありません'
+        : '今日の予定はありません';
+    final progress = healthState.stepGoal > 0
+        ? (healthState.steps / healthState.stepGoal).clamp(0.0, 1.0)
+        : 0.0;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('週間レポート'),
-      ),
-      body: kIsWeb 
-        ? const Center(child: Text("週間レポート機能はWeb版では利用できません。"))
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                _buildChart('睡眠 (時間)', _sleepData),
-                const SizedBox(height: 40),
-                _buildChart('歩数', _stepsData),
-              ],
+      appBar: AppBar(title: const Text('ヘルスケア')),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.teal),
+              child: Text(
+                'メニュー',
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
             ),
+            ListTile(
+              title: const Text('今日のデータ'),
+              onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              title: const Text('週間レポート'),
+              onTap: () => context.push('/weekly_report'),
+            ),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              today,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            if (kIsWeb)
+              const Text(
+                "ヘルスケア機能はWeb版では利用できません。",
+                style: TextStyle(color: Colors.red),
+              )
+            else ...[
+              LinearProgressIndicator(
+                value: progress,
+                minHeight: 10,
+                backgroundColor: Colors.grey[300],
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Icon(Icons.directions_walk, size: 40),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${healthState.steps}歩',
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '目標: ${healthState.stepGoal}歩',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Icon(Icons.bedtime, size: 40),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${healthState.sleepHours.toStringAsFixed(1)}h',
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const Text(
+                '睡眠時間',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ],
+            const SizedBox(height: 80),
+            Center(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.network('https://i.imgur.com/8x81gdH.png', height: 200),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(204),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.black),
+                      ),
+                      child: Text(
+                        eventText,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
-  
+}
+
+class MoreScreen extends StatelessWidget {
+  const MoreScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('その他')),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.notifications_active),
+            title: const Text('通知設定'),
+            subtitle: const Text('薬の服用時間などを通知します'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              if (kIsWeb) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('この機能はWeb版では利用できません。')),
+                );
+                return;
+              }
+              context.push('/notification_setting');
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.person_add),
+            title: const Text('会員登録'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              context.push('/register');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WeeklyReportScreen extends StatelessWidget {
+  const WeeklyReportScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final healthState = Provider.of<HealthState>(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('週間レポート')),
+      body: kIsWeb
+          ? const Center(child: Text("週間レポート機能はWeb版では利用できません。"))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  _buildChart('睡眠 (時間)', healthState.sleepData),
+                  const SizedBox(height: 40),
+                  _buildChart('歩数', healthState.stepsData),
+                ],
+              ),
+            ),
+    );
+  }
+
   Widget _buildChart(String title, List<BarChartGroupData> data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 20),
         SizedBox(
           height: 250,
@@ -817,16 +974,29 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                   sideTitles: SideTitles(
                     showTitles: true,
                     getTitlesWidget: (value, meta) {
-                      const style = TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14);
-                      final week = ['月','火','水','木','金','土','日'];
-                      return SideTitleWidget(axisSide: meta.axisSide, child: Text(week[value.toInt()], style: style));
+                      const style = TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      );
+                      final week = ['月', '火', '水', '木', '金', '土', '日'];
+                      return SideTitleWidget(
+                        axisSide: meta.axisSide,
+                        child: Text(week[value.toInt()], style: style),
+                      );
                     },
                     reservedSize: 32,
                   ),
                 ),
-                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
               ),
               borderData: FlBorderData(show: false),
               gridData: const FlGridData(show: true, drawVerticalLine: false),
@@ -837,3 +1007,4 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     );
   }
 }
+
