@@ -3,21 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MemoScreen extends StatefulWidget {
-  const MemoScreen({super.key});
+  final DateTime? selectedDate;
+
+  const MemoScreen({super.key, this.selectedDate});
 
   @override
-  _MemoScreenState createState() => _MemoScreenState();
+  MemoScreenState createState() => MemoScreenState();
 }
 
-class _MemoScreenState extends State<MemoScreen> {
+class MemoScreenState extends State<MemoScreen> {
   final TextEditingController _controller = TextEditingController();
   late SharedPreferences _prefs;
   late DateTime _selectedDay;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _selectedDay = ModalRoute.of(context)!.settings.arguments as DateTime;
+  void initState() {
+    super.initState();
+    _selectedDay = widget.selectedDate ?? DateTime.now();
     _loadMemo();
   }
 

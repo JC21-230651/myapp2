@@ -1,6 +1,6 @@
 
-import 'package:flutter/material.dart';
 import 'package:device_calendar/device_calendar.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class EventEditScreen extends StatefulWidget {
@@ -16,10 +16,10 @@ class EventEditScreen extends StatefulWidget {
   });
 
   @override
-  _EventEditScreenState createState() => _EventEditScreenState();
+  EventEditScreenState createState() => EventEditScreenState();
 }
 
-class _EventEditScreenState extends State<EventEditScreen> {
+class EventEditScreenState extends State<EventEditScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -134,12 +134,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
     );
   }
 
-  Widget _buildDateTimePicker(
-      String label, DateTime date, TimeOfDay time, Function(DateTime, TimeOfDay) onConfirm) {
+  Widget _buildDateTimePicker(String label, DateTime date, TimeOfDay time,
+      Function(DateTime, TimeOfDay) onConfirm) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 8),
         Row(
           children: <Widget>[
@@ -167,8 +168,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
               ),
             ),
-            if (!_allDay)
-              const SizedBox(width: 10),
+            if (!_allDay) const SizedBox(width: 10),
             if (!_allDay)
               Expanded(
                 flex: 1,
@@ -207,10 +207,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final end = _combineDateAndTime(_endDate, _endTime);
 
     if (!_allDay && start.isAfter(end)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('終了時刻は開始時刻より後に設定してください。')),
-        );
-        return;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('終了時刻は開始時刻より後に設定してください。')),
+      );
+      return;
     }
 
     final eventToSave = Event(
@@ -224,6 +225,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     );
 
     final result = await _deviceCalendarPlugin.createOrUpdateEvent(eventToSave);
+    if (!mounted) return;
     if (result?.isSuccess == true) {
       Navigator.pop(context, true); // 変更があったことを通知
     }
@@ -235,6 +237,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         widget.calendar.id!,
         widget.event!.eventId!,
       );
+      if (!mounted) return;
       if (result.isSuccess) {
         Navigator.pop(context, true); // 変更があったことを通知
       }

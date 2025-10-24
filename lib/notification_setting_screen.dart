@@ -1,17 +1,18 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import './notification_service.dart';
 
 class NotificationSettingScreen extends StatefulWidget {
   const NotificationSettingScreen({super.key});
 
   @override
-  _NotificationSettingScreenState createState() =>
-      _NotificationSettingScreenState();
+  NotificationSettingScreenState createState() =>
+      NotificationSettingScreenState();
 }
 
-class _NotificationSettingScreenState extends State<NotificationSettingScreen> {
+class NotificationSettingScreenState extends State<NotificationSettingScreen> {
   TimeOfDay? _selectedTime;
   final NotificationService _notificationService = NotificationService();
 
@@ -56,6 +57,7 @@ class _NotificationSettingScreenState extends State<NotificationSettingScreen> {
         body: '忘れずに服用しましょう。',
         time: picked,
       );
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('通知を${picked.format(context)}に設定しました')),
       );
@@ -70,6 +72,7 @@ class _NotificationSettingScreenState extends State<NotificationSettingScreen> {
     setState(() {
       _selectedTime = null;
     });
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('通知をキャンセルしました')),
     );
