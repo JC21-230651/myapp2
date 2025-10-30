@@ -1,5 +1,5 @@
 
-import 'package:flutter/material.dart'; // Import Material
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -17,18 +17,15 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
-    // タイムゾーンデータベースの初期化
     tz.initializeTimeZones();
 
-    // Androidの初期化設定
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    // iOSの初期化設定
     const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
 
     const InitializationSettings initializationSettings = InitializationSettings(
@@ -40,6 +37,15 @@ class NotificationService {
   }
 
   Future<void> requestPermissions() async {
+    // Request notification permissions on Android
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+    }
+
+    // Request notification permissions on iOS
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin>()
@@ -48,19 +54,13 @@ class NotificationService {
           badge: true,
           sound: true,
         );
-    // Corrected method name for Android
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
   }
 
   Future<void> scheduleDailyNotification(
       {required int id,
       required String title,
       required String body,
-      required TimeOfDay time}) async { // Changed to TimeOfDay
-
+      required TimeOfDay time}) async {
     await flutterLocalNotificationsPlugin.zonedSchedule(
       id,
       title,
@@ -68,9 +68,9 @@ class NotificationService {
       _nextInstanceOfTime(time),
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'daily_notification_channel_id', // チャンネルID
-          'Daily Notifications', // チャンネル名
-          channelDescription: 'Channel for daily notifications', // チャンネルの説明
+          'daily_notification_channel_id', // Channel ID
+          'Daily Notifications', // Channel Name
+          channelDescription: 'Channel for daily notifications', // Channel Description
           importance: Importance.max,
           priority: Priority.high,
         ),
@@ -79,13 +79,14 @@ class NotificationService {
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time, // 毎日同じ時刻に繰り返す
+      matchDateTimeComponents: DateTimeComponents.time, // Repeat daily at the same time
     );
   }
 
-  tz.TZDateTime _nextInstanceOfTime(TimeOfDay time) { // Changed to TimeOfDay
+  tz.TZDateTime _nextInstanceOfTime(TimeOfDay time) {
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-    tz.TZDateTime scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, time.hour, time.minute);
+    tz.TZDateTime scheduledDate =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, time.hour, time.minute);
     if (scheduledDate.isBefore(now)) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
