@@ -1,21 +1,34 @@
-
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
+
 import 'package:myapp/my_app.dart';
+import 'package:myapp/theme_provider.dart';
+import 'package:myapp/health_state.dart';
+import 'package:myapp/task_state.dart';
 
-void main() {
+void main() async {
+  // テスト実行前に初期化
+  TestWidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('ja_JP', null);
+
   testWidgets('App starts and displays home page', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    // 本番と同じ構成でMultiProviderを適用
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => HealthState()),
+          ChangeNotifierProvider(create: (_) => TaskState()),
+        ],
+        child: const MyApp(),
+      ),
+    );
 
-    // Verify that the home page is displayed.
-    expect(find.byType(Scaffold), findsOneWidget);
+    await tester.pumpAndSettle();
+
+    // BottomNavigationBarが表示されていることを確認
+    expect(find.byType(BottomNavigationBar), findsOneWidget);
   });
 }

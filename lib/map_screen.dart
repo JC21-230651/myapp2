@@ -1,4 +1,5 @@
 
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
@@ -39,8 +40,8 @@ class _MapScreenState extends State<MapScreen> {
           );
         }
       });
-    } catch (e) {
-      print('Error getting location: $e');
+    } catch (e, s) {
+      developer.log('Error getting location', error: e, stackTrace: s, name: 'my_app.map');
     }
   }
 
